@@ -31,6 +31,8 @@ import type {
     FeatureGroup,
     FitBoundsOptions,
     GeoJSON,
+    Layer,
+    LeafletEvent,
     LatLngExpression,
     LayerGroup,
     Map as LeafletMap,
@@ -100,20 +102,18 @@ import {
     type TooltipProps,
 } from "react-leaflet"
 import type { MarkerClusterGroupProps } from "react-leaflet-markercluster"
+import type { Feature as GeoJSONFeature, Geometry } from "geojson"
 
-function createLazyComponent<T extends ComponentType<any>>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyComponent = ComponentType<any>
+
+function createLazyComponent<T extends AnyComponent>(
     factory: () => Promise<{ default: T }>
 ) {
-    const LazyComponent = lazy(factory)
+    const LazyComponent = lazy(factory) as AnyComponent
 
-    return (props: React.ComponentProps<T>) => {
-        const [isMounted, setIsMounted] = useState(false)
-
-        useEffect(() => {
-            setIsMounted(true)
-        }, [])
-
-        if (!isMounted) {
+    const LazyWrapper = (props: React.ComponentProps<T>) => {
+        if (typeof window === "undefined") {
             return null
         }
 
@@ -123,6 +123,10 @@ function createLazyComponent<T extends ComponentType<any>>(
             </Suspense>
         )
     }
+
+    LazyWrapper.displayName = "LazyComponent"
+
+    return LazyWrapper
 }
 
 const LeafletMapContainer = createLazyComponent(() =>
@@ -273,15 +277,21 @@ function MapTileLayer({
         "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
 
     const { resolvedTheme } = useTheme()
-    const resolvedUrl =
-        resolvedTheme === "dark"
-            ? (darkUrl ?? url ?? DEFAULT_DARK_URL)
-            : (url ?? DEFAULT_URL)
-    const resolvedAttribution =
-        resolvedTheme === "dark" && darkAttribution
-            ? darkAttribution
-            : (attribution ??
-                '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>')
+    const resolvedUrl = React.useMemo(
+        () =>
+            resolvedTheme === "dark"
+                ? (darkUrl ?? url ?? DEFAULT_DARK_URL)
+                : (url ?? DEFAULT_URL),
+        [DEFAULT_DARK_URL, DEFAULT_URL, darkUrl, url, resolvedTheme]
+    )
+    const resolvedAttribution = React.useMemo(
+        () =>
+            resolvedTheme === "dark" && darkAttribution
+                ? darkAttribution
+                : (attribution ??
+                    '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>'),
+        [resolvedTheme, darkAttribution, attribution]
+    )
 
     useEffect(() => {
         if (context) {
@@ -291,7 +301,7 @@ function MapTileLayer({
                 attribution: resolvedAttribution,
             })
         }
-    }, [context, name, url, attribution])
+    }, [context, name, resolvedUrl, resolvedAttribution])
 
     if (context && context.selectedTileLayer !== name) {
         return null
@@ -373,7 +383,19 @@ function MapLayers({
             if (prevTileLayers.some((layer) => layer.name === tileLayer.name)) {
                 return prevTileLayers
             }
-            return [...prevTileLayers, tileLayer]
+            const nextTileLayers = [...prevTileLayers, tileLayer]
+            setSelectedTileLayer((prevSelected) => {
+                if (prevSelected) return prevSelected
+                const validDefaultValue =
+                    defaultTileLayer &&
+                        nextTileLayers.some(
+                            (layer) => layer.name === defaultTileLayer
+                        )
+                        ? defaultTileLayer
+                        : nextTileLayers[0]?.name ?? ""
+                return validDefaultValue
+            })
+            return nextTileLayers
         })
     }
 
@@ -400,16 +422,6 @@ function MapLayers({
             )
         }
 
-        // Set initial selected tile layer
-        if (tileLayers.length > 0 && !selectedTileLayer) {
-            const validDefaultValue =
-                defaultTileLayer &&
-                    tileLayers.some((layer) => layer.name === defaultTileLayer)
-                    ? defaultTileLayer
-                    : tileLayers[0].name
-            setSelectedTileLayer(validDefaultValue)
-        }
-
         // Error: Invalid defaultActiveLayerGroups
         if (
             defaultLayerGroups.length > 0 &&
@@ -425,7 +437,6 @@ function MapLayers({
     }, [
         tileLayers,
         defaultTileLayer,
-        selectedTileLayer,
         layerGroups,
         defaultLayerGroups,
     ])
@@ -460,6 +471,8 @@ function MapLayersControl({
     if (!layersContext) {
         throw new Error("MapLayersControl must be used within MapLayers")
     }
+    const isMdUp = useMediaQuery("(min-width: 768px)")
+    const [isOpen, setIsOpen] = useState(false)
 
     const {
         tileLayers,
@@ -490,7 +503,14 @@ function MapLayersControl({
     }
 
     return (
-        <DropdownMenu>
+        <DropdownMenu
+            open={isMdUp ? true : isOpen}
+            onOpenChange={(nextOpen) => {
+                if (!isMdUp) {
+                    setIsOpen(nextOpen)
+                }
+            }}
+            modal={false}>
             <DropdownMenuTrigger asChild>
                 <Button
                     type="button"
@@ -500,13 +520,18 @@ function MapLayersControl({
                     title="Select layers"
                     className={cn(
                         "absolute top-1 right-1 z-1000 border",
+                        "md:opacity-0 md:pointer-events-none md:select-none",
                         className
                     )}
+                    aria-hidden={isMdUp ? true : undefined}
                     {...props}>
                     <LayersIcon />
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="z-1000">
+            <DropdownMenuContent
+                align="end"
+                className="z-1000"
+                forceMount={isMdUp ? true : undefined}>
                 {showTileLayersDropdown && (
                     <>
                         <DropdownMenuLabel>{tileLayersLabel}</DropdownMenuLabel>
@@ -773,7 +798,10 @@ function MapGeoJSON({
         <LeafletGeoJSON
             data={data}
             style={resolvedDefaultStyle}
-            onEachFeature={(feature, layer) => {
+            onEachFeature={(
+                feature: GeoJSONFeature<Geometry, Record<string, unknown>>,
+                layer: Layer
+            ) => {
                 onEachFeature?.(feature, layer)
                 if (popupFields && popupFields.length > 0) {
                     const properties =
@@ -795,10 +823,10 @@ function MapGeoJSON({
                         .filter(Boolean)
                         .join("")
                     const popupHtml = `<div style="background:#0b1220;color:#e5e7eb;padding:12px;border-radius:8px;border:1px solid #1f2937;min-width:220px;">${title
-                            ? `<div style="font-size:16px;font-weight:600;color:#f3f4f6;">${escapeHtml(
-                                title
-                            )}</div>`
-                            : ""
+                        ? `<div style="font-size:16px;font-weight:600;color:#f3f4f6;">${escapeHtml(
+                            title
+                        )}</div>`
+                        : ""
                         }<div style="margin-top:8px;display:grid;gap:4px;color:#cbd5f5;">${rows}</div></div>`
                     layer.bindPopup(popupHtml)
                 }
@@ -810,7 +838,7 @@ function MapGeoJSON({
             eventHandlers={
                 selectable
                     ? {
-                        click: (event) =>
+                        click: (event: LeafletEvent & { layer: Layer }) =>
                             handleSelect(event.layer as L.Path),
                         dblclick: handleUnselect,
                     }
@@ -1001,7 +1029,15 @@ function MapLocateControl({
     const [isLocating, setIsLocating] = useDebounceLoadingState(200)
     const [position, setPosition] = useState<LatLngExpression | null>(null)
 
-    function startLocating() {
+    const stopLocating = React.useCallback(() => {
+        map.stopLocate()
+        map.off("locationfound")
+        map.off("locationerror")
+        setPosition(null)
+        setIsLocating(false)
+    }, [map, setIsLocating])
+
+    const startLocating = React.useCallback(() => {
         setIsLocating(true)
         map.locate({ setView: true, maxZoom: map.getMaxZoom(), watch })
         map.on("locationfound", (location: LocationEvent) => {
@@ -1014,17 +1050,9 @@ function MapLocateControl({
             setIsLocating(false)
             onLocationError?.(error)
         })
-    }
+    }, [map, watch, onLocationFound, onLocationError, setIsLocating])
 
-    function stopLocating() {
-        map.stopLocate()
-        map.off("locationfound")
-        map.off("locationerror")
-        setPosition(null)
-        setIsLocating(false)
-    }
-
-    useEffect(() => () => stopLocating(), [])
+    useEffect(() => () => stopLocating(), [stopLocating])
 
     return (
         <MapControlContainer className={cn("right-1 bottom-1", className)}>
@@ -1105,27 +1133,41 @@ function MapDrawControl({
     const [activeMode, setActiveMode] = useState<MapDrawMode>(null)
     const [layersCount, setLayersCount] = useState(0)
 
-    function updateLayersCount() {
+    const updateLayersCount = React.useCallback(() => {
         if (featureGroupRef.current) {
             setLayersCount(featureGroupRef.current.getLayers().length)
         }
-    }
+    }, [])
 
-    function handleDrawCreated(event: DrawEvents.Created) {
+    const handleDrawCreated = React.useCallback(
+        (event: DrawEvents.Created) => {
+            if (!featureGroupRef.current) return
+            const { layer } = event
+            featureGroupRef.current.addLayer(layer)
+            onLayersChange?.(featureGroupRef.current)
+            updateLayersCount()
+            setActiveMode(null)
+        },
+        [onLayersChange, updateLayersCount]
+    )
+
+    const handleDrawEditedOrDeleted = React.useCallback(() => {
         if (!featureGroupRef.current) return
-        const { layer } = event
-        featureGroupRef.current.addLayer(layer)
         onLayersChange?.(featureGroupRef.current)
         updateLayersCount()
         setActiveMode(null)
-    }
+    }, [onLayersChange, updateLayersCount])
 
-    function handleDrawEditedOrDeleted() {
-        if (!featureGroupRef.current) return
-        onLayersChange?.(featureGroupRef.current)
-        updateLayersCount()
-        setActiveMode(null)
-    }
+    const [featureGroup, setFeatureGroup] = useState<L.FeatureGroup | null>(
+        null
+    )
+    const handleFeatureGroupRef = React.useCallback(
+        (instance: L.FeatureGroup | null) => {
+            featureGroupRef.current = instance
+            setFeatureGroup(instance)
+        },
+        []
+    )
 
     useEffect(() => {
         if (!L || !LeafletDraw || !map) return
@@ -1145,19 +1187,26 @@ function MapDrawControl({
             map.off(L.Draw.Event.EDITED, handleDrawEditedOrDeleted)
             map.off(L.Draw.Event.DELETED, handleDrawEditedOrDeleted)
         }
-    }, [L, LeafletDraw, map, onLayersChange])
+    }, [
+        L,
+        LeafletDraw,
+        map,
+        onLayersChange,
+        handleDrawCreated,
+        handleDrawEditedOrDeleted,
+    ])
 
     return (
         <MapDrawContext.Provider
             value={{
-                featureGroup: featureGroupRef.current,
+                featureGroup,
                 activeMode,
                 setActiveMode,
                 editControlRef,
                 deleteControlRef,
                 layersCount,
             }}>
-            <LeafletFeatureGroup ref={featureGroupRef} />
+            <LeafletFeatureGroup ref={handleFeatureGroupRef} />
             <MapControlContainer className={cn("bottom-1 left-1", className)}>
                 <ButtonGroup orientation="vertical" {...props} />
             </MapControlContainer>
@@ -1395,7 +1444,7 @@ function MapDrawActionButton<T extends EditToolbar.Edit | EditToolbar.Delete>({
             control.disable?.()
             controlRef.current = null
         }
-    }, [L, map, isActive, featureGroup, createDrawTool])
+    }, [L, map, isActive, featureGroup, createDrawTool, controlRef])
 
     function handleClick() {
         controlRef.current?.save()
@@ -1448,14 +1497,7 @@ function MapDrawEdit({
             touchMoveIcon: mapDrawHandleIcon,
             touchResizeIcon: mapDrawHandleIcon,
         })
-        L.drawLocal.edit.handlers.edit.tooltip = {
-            text: "Drag handles or markers to edit.",
-            subtext: "",
-        }
-        L.drawLocal.edit.handlers.remove.tooltip = {
-            text: "Click on a shape to remove.",
-        }
-    }, [mapDrawHandleIcon])
+    }, [L, mapDrawHandleIcon])
 
     return (
         <MapDrawActionButton
@@ -1586,6 +1628,18 @@ function useLeaflet() {
                     leafletFullscreen.default || leafletFullscreen
             }
 
+            if (L_object.drawLocal?.edit?.handlers?.edit?.tooltip) {
+                L_object.drawLocal.edit.handlers.edit.tooltip = {
+                    text: "Drag handles or markers to edit.",
+                    subtext: "",
+                }
+            }
+            if (L_object.drawLocal?.edit?.handlers?.remove?.tooltip) {
+                L_object.drawLocal.edit.handlers.remove.tooltip = {
+                    text: "Click on a shape to remove.",
+                }
+            }
+
             setLeafletDraw(leafletDraw)
             setL(L_object)
         }
@@ -1600,31 +1654,64 @@ function useLeaflet() {
 }
 
 function useDebounceLoadingState(delay = 200) {
-    const [isLoading, setIsLoading] = useState(false)
     const [showLoading, setShowLoading] = useState(false)
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    useEffect(() => {
-        if (isLoading) {
-            timeoutRef.current = setTimeout(() => {
-                setShowLoading(true)
-            }, delay)
-        } else {
+    const setIsLoadingWithDelay = React.useCallback(
+        (next: boolean) => {
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current)
                 timeoutRef.current = null
             }
-            setShowLoading(false)
-        }
 
-        return () => {
+            if (next) {
+                timeoutRef.current = setTimeout(() => {
+                    setShowLoading(true)
+                }, delay)
+            } else {
+                setShowLoading(false)
+            }
+        },
+        [delay]
+    )
+
+    useEffect(
+        () => () => {
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current)
             }
-        }
-    }, [isLoading, delay])
+        },
+        []
+    )
 
-    return [showLoading, setIsLoading] as const
+    return [showLoading, setIsLoadingWithDelay] as const
+}
+
+function useMediaQuery(query: string) {
+    const [matches, setMatches] = useState(false)
+
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        const media = window.matchMedia(query)
+        const update = () => setMatches(media.matches)
+        update()
+
+        if (media.addEventListener) {
+            media.addEventListener("change", update)
+        } else {
+            media.addListener(update)
+        }
+
+        return () => {
+            if (media.removeEventListener) {
+                media.removeEventListener("change", update)
+            } else {
+                media.removeListener(update)
+            }
+        }
+    }, [query])
+
+    return matches
 }
 
 export {
