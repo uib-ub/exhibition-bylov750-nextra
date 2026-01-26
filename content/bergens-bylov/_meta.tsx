@@ -7,7 +7,13 @@ const meta = {
     'index': {
         type: 'page'
     },
-    'byens-kart': {
+    'byens-kart-peder': {
+        theme: {
+            layout: "full",
+            toc: false
+        }
+    },
+    'byens-kart-tarje': {
         theme: {
             layout: "full",
             toc: false
