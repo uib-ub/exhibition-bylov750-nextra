@@ -32,7 +32,7 @@ const banner = (
 
 const navbar = (
   <Navbar
-    logo={<Image src='/logos/svg/UiB_Bylovjubileet_2026_Initial_Linje.svg' alt='' height={50} width={140} className="ml-5 mb-3"/>}
+    logo={<Image src='/logos/svg/UiB_Bylovjubileet_2026_Initial_Linje.svg' alt='' height={50} width={140} className="-ml-3 md:ml-5 mb-3"/>}
   // ... Your additional navbar options
   />
 )
