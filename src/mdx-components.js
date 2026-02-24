@@ -9,6 +9,7 @@ import { useMDXComponents as getThemeComponents } from 'nextra-theme-docs'; // n
 //import { ImageCarousel } from '@/components/image-carousel'
 import Link from 'next/link';
 import Card, { Cards } from '@/components/card';
+import Carousel from '@/components/carousel';
 import Lorem from '@/components/lorem-ipsum';
 import SubHero from '@/components/sub-hero';
 
@@ -21,6 +22,7 @@ export function useMDXComponents(components) {
     ...themeComponents,
     Card,
     Cards,
+    Carousel,
     Link,
     Lorem,
     SubHero,
