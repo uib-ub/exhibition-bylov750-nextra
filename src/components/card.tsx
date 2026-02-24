@@ -17,11 +17,11 @@ export default function Card({image, href, alt, title, children}: {
         <ShadcnCard className='relative mx-auto w-full max-w-xs pt-5'>
             <Link href={href}>
                 <Image
-                    src={image || '/middelalderforum_2026_header_0.jpg'} 
+                    src={image || '/images/middelalderforum_2026_header_0.jpg'} 
                     alt={alt || 'An image.'}
-                    width={200}
-                    height={200}
-                    className='relative z-20 w-full object-cover brightness-100 dark:brightness-40'
+                    width={300}
+                    height={300}
+                    className='relative z-20 h-35 object-cover brightness-100 dark:brightness-40'
                 />
             </Link>
             <CardHeader>
