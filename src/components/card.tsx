@@ -37,7 +37,18 @@ export default function Card({image, href, alt, title, children}: {
 export function Cards({children}: {children: React.ReactNode}) {
     return (
         <div className='flex justify-center'>
-            <div className={`shrink mt-15 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8`}>{children}</div>
+            <div className={`
+                shrink 
+                mt-15 
+                grid
+                place-items-center
+                sm:grid-cols-2 
+                md:grid-cols-3 
+                lg:grid-cols-4 
+                gap-8
+            `}>
+                {children}
+            </div>
         </div>
     );
 }
