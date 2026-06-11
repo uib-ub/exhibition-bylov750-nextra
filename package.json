@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev -p 3002 --turbopack",
     "dev:webpack": "next dev",
     "dev:inspect": "NODE_OPTIONS='--inspect' next dev",
     "build": "next build",
@@ -31,7 +31,7 @@
     "@types/node": "20",
     "@types/react": "19",
     "@types/react-dom": "19",
-    "baseline-browser-mapping": "2.9.19",
+    "baseline-browser-mapping": "2.10.35",
     "eslint": "9",
     "eslint-config-next": "16.0.6",
     "pagefind": "1.4.0",
