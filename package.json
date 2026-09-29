@@ -31,7 +31,7 @@
     "@types/node": "20",
     "@types/react": "19",
     "@types/react-dom": "19",
-    "baseline-browser-mapping": "2.10.35",
+    "baseline-browser-mapping": "2.11.22",
     "eslint": "9",
     "eslint-config-next": "16.0.6",
     "pagefind": "1.4.0",
